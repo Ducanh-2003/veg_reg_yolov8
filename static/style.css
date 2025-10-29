@@ -1,0 +1,25 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4; /* Nền sáng (màu xám rất nhạt) */
+    color: #333; /* Chữ tối (màu xám đậm) */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+}
+
+h1 {
+    color: #4CAF50; /* Giữ màu xanh lá đặc trưng */
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 5px;
+}
+
+img {
+    margin-top: 20px;
+    max-width: 80%; /* Giúp video co giãn */
+    height: auto;
+    border: 3px solid #4CAF50;
+    border-radius: 10px; /* Bo góc */
+    /* Đổ bóng nhẹ hơn cho nền sáng */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); 
+}
