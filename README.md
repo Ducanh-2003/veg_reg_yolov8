@@ -74,7 +74,7 @@ This project uses the standard YOLO text-label format:
 train: /path/to/train/images
 val: /path/to/val/images
 nc: 3
-names: ["tomato", "cucumber", "eggplant"]
+names: ['avocado', 'beans', 'beet', 'bell pepper', 'broccoli', 'brus capusta', 'cabbage', 'carrot', 'cayliflower', 'celery', 'corn', 'cucumber', 'eggplant', 'fasol', 'garlic', 'hot pepper', 'onion', 'peas', 'potato', 'pumpkin', 'rediska', 'redka', 'salad', 'squash-patisson', 'tomato', 'vegetable marrow']
 ```
 
 ## Included artifacts
