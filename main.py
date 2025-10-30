@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 # --- TẢI MODEL VÀ WEBCAM ---
 # Tải model YOLOv8 (file .pt phải ở cùng thư mục)
-model = YOLO('best.pt') 
+model = YOLO('model.pt') 
 
 # Mở webcam
 cap = cv2.VideoCapture(0)
