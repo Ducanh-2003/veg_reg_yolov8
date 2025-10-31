@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Upload - VegDetect</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <header class="site-header small">
+      <div class="container">
+        <h1>Tải ảnh lên</h1>
+        <a class="back" href="{{ url_for('index') }}">← Về trang chính</a>
+      </div>
+    </header>
+
+    <main class="container upload-layout">
+      <div class="upload-box">
+        <p>Chọn ảnh từ thiết bị của bạn để nhận diện.</p>
+        <input type="file" id="file-input" accept="image/*" />
+        <button id="upload-btn" class="primary">Tải lên và nhận dạng</button>
+
+        <div id="upload-result" class="result">
+          <div id="upload-status">Chưa có ảnh.</div>
+          <img id="uploaded-img" src="" alt="Kết quả" style="display:none; max-width:100%;"/>
+          <pre id="upload-counts" class="counts"></pre>
+        </div>
+      </div>
+    </main>
+
+    <footer class="container footer">
+      <small>VegDetect • Upload</small>
+    </footer>
+
+    <script>
+      const fileInput = document.getElementById('file-input');
+      const uploadBtn = document.getElementById('upload-btn');
+      const uploadStatus = document.getElementById('upload-status');
+      const uploadedImg = document.getElementById('uploaded-img');
+      const uploadCounts = document.getElementById('upload-counts');
+
+      uploadBtn.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        if (!file) { alert('Vui lòng chọn một ảnh để tải lên.'); return; }
+        uploadStatus.innerText = 'Đang gửi ảnh...';
+        uploadedImg.style.display = 'none';
+        uploadCounts.innerText = '';
+
+        const fd = new FormData(); fd.append('file', file);
+        try {
+          const res = await fetch('/upload', { method: 'POST', body: fd });
+          if (!res.ok) { uploadStatus.innerText = 'Lỗi từ server'; return; }
+          const data = await res.json();
+          if (data.error) { uploadStatus.innerText = 'Lỗi: ' + data.error; return; }
+          uploadStatus.innerText = 'Kết quả:';
+          uploadedImg.src = data.image; uploadedImg.style.display = 'block';
+
+          const counts = data.counts || {};
+          const keys = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+          if (keys.length === 0) uploadCounts.innerText = 'Không phát hiện vật thể nào.';
+          else {
+            let lines = [], total=0; for (const k of keys) { lines.push(`${k}: ${counts[k]}`); total+=counts[k]; }
+            lines.unshift('Tổng: ' + total);
+            uploadCounts.innerText = lines.join('\n');
+          }
+        } catch (err) { uploadStatus.innerText = 'Lỗi gửi ảnh.'; }
+      });
+    </script>
+  </body>
+</html>

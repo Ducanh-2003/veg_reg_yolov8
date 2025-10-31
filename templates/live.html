@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Live Camera - VegDetect</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <header class="site-header small">
+      <div class="container">
+        <h1>Live Camera</h1>
+        <a class="back" href="{{ url_for('index') }}">← Về trang chính</a>
+      </div>
+    </header>
+
+    <main class="container live-layout">
+      <section class="video-panel">
+        <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Live stream" />
+      </section>
+
+      <aside class="info-panel">
+        <h2>Danh sách vật thể (từ livestream)</h2>
+        <div id="counts">Đang tải...</div>
+        <small class="muted">Cập nhật tự động mỗi 600ms</small>
+      </aside>
+    </main>
+
+    <footer class="container footer">
+      <small>VegDetect • Live</small>
+    </footer>
+
+    <script>
+      async function fetchCounts() {
+        try {
+          const res = await fetch('/counts');
+          if (!res.ok) return;
+          const data = await res.json();
+          const counts = data.counts || {};
+          const keys = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+          if (keys.length === 0) {
+            document.getElementById('counts').innerText = 'Không có vật thể nào được đếm.';
+            return;
+          }
+          let lines = [];
+          let total = 0;
+          for (const k of keys) { lines.push(`${k}: ${counts[k]}`); total += counts[k]; }
+          lines.unshift('Tổng: ' + total);
+          document.getElementById('counts').innerText = lines.join('\n');
+        } catch (e) {
+          // ignore
+        }
+      }
+      setInterval(fetchCounts, 600);
+      fetchCounts();
+    </script>
+  </body>
+</html>

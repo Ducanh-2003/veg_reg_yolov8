@@ -2,8 +2,11 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE" # Sửa lỗi OMP (giữ lại)
 
 import cv2
-from flask import Flask, Response, render_template
+from flask import Flask, Response, render_template, jsonify, request
 from ultralytics import YOLO
+import threading
+import numpy as np
+import base64
 
 # --- KHỞI TẠO ỨNG DỤNG FLASK ---
 app = Flask(__name__)
@@ -18,13 +21,17 @@ if not cap.isOpened():
     print("Lỗi: Không thể mở webcam.")
     exit()
 
+# Global to store latest counts for the web UI
+latest_counts = {}
+counts_lock = threading.Lock()
+
+
 def generate_frames():
     """
     Hàm này là một "generator", nó liên tục đọc webcam,
     chạy model, và "phát" (yield) từng frame ra ngoài.
     """
 
-    
     while True:
         # 1. Đọc frame từ webcam
         success, frame = cap.read()
@@ -39,28 +46,85 @@ def generate_frames():
         # Lấy frame đã được vẽ (boxes, confs...)
         annotated_frame = results[0].plot(boxes=True, masks=False, conf=True)
 
-        
-        # Tạo một set để lưu các ID của các vật thể có conf > 0.9 trong frame
-        current_high_conf_ids = set()
-
-        # Lấy confs (độ tự tin) và tracker_ids
-        confs = results[0].boxes.conf.cpu()
+        # Lấy confs (độ tự tin), class ids và tracker_ids
+        boxes = results[0].boxes
+        confs = []
+        cls_ids = []
         track_ids = []
-        if results[0].boxes.id is not None:
-            track_ids = results[0].boxes.id.int().cpu().tolist()
+        try:
+            if boxes.conf is not None:
+                confs = boxes.conf.cpu().tolist()
+        except Exception:
+            confs = []
+        try:
+            if boxes.cls is not None:
+                # boxes.cls may be float tensor; convert to int
+                cls_ids = [int(x) for x in boxes.cls.cpu().tolist()]
+        except Exception:
+            cls_ids = []
+        try:
+            if boxes.id is not None:
+                track_ids = [int(x) for x in boxes.id.int().cpu().tolist()]
+        except Exception:
+            track_ids = []
 
-        # Lặp qua từng đối tượng
-        for conf, track_id in zip(confs, track_ids):
-            
-            if conf > 0.8:
-                current_high_conf_ids.add(track_id) 
+        # Ensure lists are same length; if ids missing, use None placeholders
+        n = max(len(confs), len(cls_ids), len(track_ids))
+        # pad lists
+        while len(confs) < n:
+            confs.append(0.0)
+        while len(cls_ids) < n:
+            cls_ids.append(-1)
+        while len(track_ids) < n:
+            track_ids.append(None)
 
-        # counter
-        current_object_count = len(current_high_conf_ids)
+        # Threshold for considering a detection "counted"
+        CONF_THRESH = 0.8
+
+        # Map track_id -> class_id for high-confidence detections
+        tid_to_cid = {}
+        for conf, cid, tid in zip(confs, cls_ids, track_ids):
+            if tid is not None and conf >= CONF_THRESH:
+                tid_to_cid[tid] = cid
+
+        # If tracker didn't return ids, fallback to counting detections by class
+        counts = {}
+        if len(tid_to_cid) > 0:
+            # Count unique track ids grouped by class
+            for tid, cid in tid_to_cid.items():
+                # Resolve name from model.names if possible
+                name = model.names.get(cid, str(cid)) if hasattr(model, 'names') else str(cid)
+                counts[name] = counts.get(name, 0) + 1
+        else:
+            # Fallback: count detections with conf >= CONF_THRESH by class
+            for conf, cid in zip(confs, cls_ids):
+                if conf >= CONF_THRESH and cid >= 0:
+                    name = model.names.get(cid, str(cid)) if hasattr(model, 'names') else str(cid)
+                    counts[name] = counts.get(name, 0) + 1
+
+        # Update global latest_counts for the UI
+        with counts_lock:
+            latest_counts.clear()
+            # copy so we don't hold references to same dict
+            for k, v in counts.items():
+                latest_counts[k] = v
+
+        # counter (total unique objects with high conf)
+        current_object_count = sum(latest_counts.values())
 
         # counter text
         cv2.putText(annotated_frame, f"SO LUONG: {current_object_count}", (50, 70), 
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (80, 175, 76), 2)
+
+        # Optionally draw per-class counts on frame (top-left), multiple lines
+        start_y = 110
+        line_h = 28
+        i = 0
+        for name, cnt in latest_counts.items():
+            text = f"{name}: {cnt}"
+            cv2.putText(annotated_frame, text, (50, start_y + i*line_h), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            i += 1
 
         # 4. Mã hóa frame thành JPEG
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
@@ -74,12 +138,84 @@ def generate_frames():
 
 @app.route('/')
 def index():
-   return render_template('index.html') # Đảm bảo file HTML ở thư mục /templates
+    return render_template('index.html') # Trang chính (landing) links tới Live và Upload
+
+
+@app.route('/live')
+def live():
+     """Trang phát livestream từ webcam."""
+     return render_template('live.html')
 
 @app.route('/video_feed')
 def video_feed():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/counts')
+def counts_api():
+    """Return latest per-class counts as JSON."""
+    with counts_lock:
+        # Return a copy to avoid race
+        data = dict(latest_counts)
+    return jsonify({'counts': data})
+
+@app.route('/upload', methods=['GET', 'POST'])
+def upload_image():
+    """Nếu GET: trả về trang upload. Nếu POST: nhận ảnh, chạy detection và trả JSON.
+    """
+    if request.method == 'GET':
+        return render_template('upload.html')
+
+    # POST: API xử lý ảnh
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'No file provided'}), 400
+
+    data = file.read()
+    # Convert bytes to numpy image
+    nparr = np.frombuffer(data, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({'error': 'Cannot decode image'}), 400
+
+    # Run detection (single-frame predict)
+    results = model.predict(img, conf=0.25, verbose=False)
+    annotated = results[0].plot(boxes=True, masks=False, conf=True)
+
+    # Count detections by class (no track ids for single image)
+    counts = {}
+    boxes = results[0].boxes
+    try:
+        confs = boxes.conf.cpu().tolist() if boxes.conf is not None else []
+    except Exception:
+        confs = []
+    try:
+        cls_ids = [int(x) for x in boxes.cls.cpu().tolist()] if boxes.cls is not None else []
+    except Exception:
+        cls_ids = []
+
+    # pad
+    n = max(len(confs), len(cls_ids))
+    while len(confs) < n:
+        confs.append(0.0)
+    while len(cls_ids) < n:
+        cls_ids.append(-1)
+
+    CONF_THRESH = 0.5
+    for conf, cid in zip(confs, cls_ids):
+        if conf >= CONF_THRESH and cid >= 0:
+            name = model.names.get(cid, str(cid)) if hasattr(model, 'names') else str(cid)
+            counts[name] = counts.get(name, 0) + 1
+
+    # Encode annotated image to base64
+    ret, buffer = cv2.imencode('.jpg', annotated)
+    if not ret:
+        return jsonify({'error': 'Encoding failed'}), 500
+    jpg_bytes = buffer.tobytes()
+    b64 = base64.b64encode(jpg_bytes).decode('utf-8')
+    data_url = f"data:image/jpeg;base64,{b64}"
+
+    return jsonify({'counts': counts, 'image': data_url})
 
 # --- CHẠY SERVER ---
 if __name__ == '__main__':
