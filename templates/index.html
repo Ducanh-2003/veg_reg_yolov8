@@ -3,32 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <title>VegDetect - Trang chính</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
   </head>
   <body>
     <header class="site-header">
       <div class="container">
         <h1>VegDetect</h1>
-        <p class="lead">Nhận diện rau củ — chọn chế độ Livestream hoặc Tải ảnh lên</p>
+        <p class="lead">
+          Detect vegetables — choose Live camera or Upload image
+        </p>
       </div>
     </header>
 
     <main class="container cards">
       <a class="card" href="{{ url_for('live') }}">
         <h2>Live Camera</h2>
-        <p>Xem luồng webcam trực tiếp và đếm vật thể theo thời gian thực.</p>
-        <span class="btn">Mở Live</span>
+        <p>View live webcam stream and count objects in real time.</p>
+        <span class="btn">Open Live</span>
       </a>
 
       <a class="card" href="{{ url_for('upload_image') }}">
-        <h2>Tải ảnh lên</h2>
-        <p>Tải ảnh từ máy và nhận diện/đánh dấu vật thể trong ảnh.</p>
-        <span class="btn">Mở Upload</span>
+        <h2>Upload Image</h2>
+        <p>Upload an image from your device and detect/annotate objects.</p>
+        <span class="btn">Open Upload</span>
       </a>
     </main>
 
     <footer class="container footer">
-      <small>VegDetect • Nhỏ gọn & nhanh • Powered by YOLOv8</small>
+      <small>VegDetect • Lightweight & fast • Powered by YOLOv8</small>
     </footer>
   </body>
 </html>

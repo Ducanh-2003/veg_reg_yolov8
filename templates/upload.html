@@ -3,25 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <title>Upload - VegDetect</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
   </head>
   <body>
     <header class="site-header small">
       <div class="container">
-        <h1>Tải ảnh lên</h1>
-        <a class="back" href="{{ url_for('index') }}">← Về trang chính</a>
+        <h1>Upload Image</h1>
+        <a class="back" href="{{ url_for('index') }}">← Back to Home</a>
       </div>
     </header>
 
     <main class="container upload-layout">
       <div class="upload-box">
-        <p>Chọn ảnh từ thiết bị của bạn để nhận diện.</p>
+        <p>Select an image from your device to detect.</p>
         <input type="file" id="file-input" accept="image/*" />
-        <button id="upload-btn" class="primary">Tải lên và nhận dạng</button>
+        <button id="upload-btn" class="primary">Upload and Detect</button>
 
         <div id="upload-result" class="result">
-          <div id="upload-status">Chưa có ảnh.</div>
-          <img id="uploaded-img" src="" alt="Kết quả" style="display:none; max-width:100%;"/>
+          <div id="upload-status">No image yet.</div>
+          <img
+            id="uploaded-img"
+            src=""
+            alt="Result"
+            style="display: none; max-width: 100%"
+          />
           <pre id="upload-counts" class="counts"></pre>
         </div>
       </div>
@@ -32,37 +40,58 @@
     </footer>
 
     <script>
-      const fileInput = document.getElementById('file-input');
-      const uploadBtn = document.getElementById('upload-btn');
-      const uploadStatus = document.getElementById('upload-status');
-      const uploadedImg = document.getElementById('uploaded-img');
-      const uploadCounts = document.getElementById('upload-counts');
+      const fileInput = document.getElementById("file-input");
+      const uploadBtn = document.getElementById("upload-btn");
+      const uploadStatus = document.getElementById("upload-status");
+      const uploadedImg = document.getElementById("uploaded-img");
+      const uploadCounts = document.getElementById("upload-counts");
 
-      uploadBtn.addEventListener('click', async () => {
+      uploadBtn.addEventListener("click", async () => {
         const file = fileInput.files[0];
-        if (!file) { alert('Vui lòng chọn một ảnh để tải lên.'); return; }
-        uploadStatus.innerText = 'Đang gửi ảnh...';
-        uploadedImg.style.display = 'none';
-        uploadCounts.innerText = '';
+        if (!file) {
+          alert("Please select an image to upload.");
+          return;
+        }
+        uploadStatus.innerText = "Uploading image...";
+        uploadedImg.style.display = "none";
+        uploadCounts.innerText = "";
 
-        const fd = new FormData(); fd.append('file', file);
+        const fd = new FormData();
+        fd.append("file", file);
         try {
-          const res = await fetch('/upload', { method: 'POST', body: fd });
-          if (!res.ok) { uploadStatus.innerText = 'Lỗi từ server'; return; }
+          const res = await fetch("/upload", { method: "POST", body: fd });
+          if (!res.ok) {
+            uploadStatus.innerText = "Server error";
+            return;
+          }
           const data = await res.json();
-          if (data.error) { uploadStatus.innerText = 'Lỗi: ' + data.error; return; }
-          uploadStatus.innerText = 'Kết quả:';
-          uploadedImg.src = data.image; uploadedImg.style.display = 'block';
+          if (data.error) {
+            uploadStatus.innerText = "Error: " + data.error;
+            return;
+          }
+          uploadStatus.innerText = "Result:";
+          uploadedImg.src = data.image;
+          uploadedImg.style.display = "block";
 
           const counts = data.counts || {};
-          const keys = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
-          if (keys.length === 0) uploadCounts.innerText = 'Không phát hiện vật thể nào.';
+          const keys = Object.keys(counts).sort(
+            (a, b) => counts[b] - counts[a]
+          );
+          if (keys.length === 0)
+            uploadCounts.innerText = "No objects detected.";
           else {
-            let lines = [], total=0; for (const k of keys) { lines.push(`${k}: ${counts[k]}`); total+=counts[k]; }
-            lines.unshift('Tổng: ' + total);
-            uploadCounts.innerText = lines.join('\n');
+            let lines = [],
+              total = 0;
+            for (const k of keys) {
+              lines.push(`${k}: ${counts[k]}`);
+              total += counts[k];
+            }
+            lines.unshift("Total: " + total);
+            uploadCounts.innerText = lines.join("\n");
           }
-        } catch (err) { uploadStatus.innerText = 'Lỗi gửi ảnh.'; }
+        } catch (err) {
+          uploadStatus.innerText = "Error while uploading.";
+        }
       });
     </script>
   </body>

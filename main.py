@@ -1,5 +1,5 @@
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE" # Sửa lỗi OMP (giữ lại)
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE" # Fix OMP duplicate lib issue (keep)
 
 import cv2
 from flask import Flask, Response, render_template, jsonify, request
@@ -8,17 +8,17 @@ import threading
 import numpy as np
 import base64
 
-# --- KHỞI TẠO ỨNG DỤNG FLASK ---
+# --- INITIALIZE FLASK APPLICATION ---
 app = Flask(__name__)
 
-# --- TẢI MODEL VÀ WEBCAM ---
-# Tải model YOLOv8 (file .pt phải ở cùng thư mục)
+# --- LOAD MODEL AND WEBCAM ---
+# Load YOLOv8 model (expect model.pt in repo root)
 model = YOLO('model.pt') 
 
-# Mở webcam
+# Open webcam
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
-    print("Lỗi: Không thể mở webcam.")
+    print("Error: Cannot open webcam.")
     exit()
 
 # Global to store latest counts for the web UI
@@ -28,25 +28,25 @@ counts_lock = threading.Lock()
 
 def generate_frames():
     """
-    Hàm này là một "generator", nó liên tục đọc webcam,
-    chạy model, và "phát" (yield) từng frame ra ngoài.
+    Generator that continuously reads from the webcam,
+    runs the model, annotates the frame and yields JPEG frames
+    for an MJPEG response.
     """
-
     while True:
-        # 1. Đọc frame từ webcam
+        # 1. Read a frame from the webcam
         success, frame = cap.read()
         if not success:
-            print("Hết frame hoặc lỗi webcam.")
+            print("No frame or webcam error.")
             break
-        
-        # 2. CHẠY MODEL TRACKING
-        # conf=0.25 để tracker chạy ổn định
+
+        # 2. Run the tracker / model
+        # conf=0.25 gives stable tracking
         results = model.track(frame, persist=True, conf=0.25, verbose=False)
 
-        # Lấy frame đã được vẽ (boxes, confs...)
+        # Get the annotated frame (boxes, confs, etc.)
         annotated_frame = results[0].plot(boxes=True, masks=False, conf=True)
 
-        # Lấy confs (độ tự tin), class ids và tracker_ids
+        # Extract confs (confidence), class ids and tracker ids
         boxes = results[0].boxes
         confs = []
         cls_ids = []
@@ -78,7 +78,7 @@ def generate_frames():
         while len(track_ids) < n:
             track_ids.append(None)
 
-        # Threshold for considering a detection "counted"
+        # Threshold for considering a detection as "counted"
         CONF_THRESH = 0.8
 
         # Map track_id -> class_id for high-confidence detections
@@ -102,19 +102,19 @@ def generate_frames():
                     name = model.names.get(cid, str(cid)) if hasattr(model, 'names') else str(cid)
                     counts[name] = counts.get(name, 0) + 1
 
-        # Update global latest_counts for the UI
+        # Update global latest_counts for the web UI
         with counts_lock:
             latest_counts.clear()
             # copy so we don't hold references to same dict
             for k, v in counts.items():
                 latest_counts[k] = v
 
-        # counter (total unique objects with high conf)
+        # total count of detected objects (high confidence)
         current_object_count = sum(latest_counts.values())
 
-        # counter text
-        cv2.putText(annotated_frame, f"SO LUONG: {current_object_count}", (50, 70), 
-            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (80, 175, 76), 2)
+        # overlay a readable counter on the frame
+        cv2.putText(annotated_frame, f"COUNT: {current_object_count}", (50, 70),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (80, 175, 76), 2)
 
         # Optionally draw per-class counts on frame (top-left), multiple lines
         start_y = 110
@@ -122,16 +122,16 @@ def generate_frames():
         i = 0
         for name, cnt in latest_counts.items():
             text = f"{name}: {cnt}"
-            cv2.putText(annotated_frame, text, (50, start_y + i*line_h), 
+            cv2.putText(annotated_frame, text, (50, start_y + i * line_h),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
             i += 1
 
-        # 4. Mã hóa frame thành JPEG
+        # 4. Encode frame to JPEG
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
         if not ret:
-            continue # Bỏ qua nếu nén lỗi
+            continue  # Skip if encoding fails
 
-        # 5. "Phát" frame ra
+        # 5. Stream the frame
         frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -143,8 +143,8 @@ def index():
 
 @app.route('/live')
 def live():
-     """Trang phát livestream từ webcam."""
-     return render_template('live.html')
+    """Serve the live webcam page."""
+    return render_template('live.html')
 
 @app.route('/video_feed')
 def video_feed():
@@ -161,8 +161,7 @@ def counts_api():
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_image():
-    """Nếu GET: trả về trang upload. Nếu POST: nhận ảnh, chạy detection và trả JSON.
-    """
+    """If GET: return the upload page. If POST: accept image, run detection and return JSON."""
     if request.method == 'GET':
         return render_template('upload.html')
 
