@@ -1,3 +1,6 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE" # Sửa lỗi OMP (giữ lại)
+
 import cv2
 from flask import Flask, Response, render_template
 from ultralytics import YOLO
@@ -20,6 +23,8 @@ def generate_frames():
     Hàm này là một "generator", nó liên tục đọc webcam,
     chạy model, và "phát" (yield) từng frame ra ngoài.
     """
+
+    
     while True:
         # 1. Đọc frame từ webcam
         success, frame = cap.read()
@@ -27,46 +32,55 @@ def generate_frames():
             print("Hết frame hoặc lỗi webcam.")
             break
         
-        # 2. Chạy model YOLOv8 trên frame
-        # stream=True sẽ hiệu quả hơn cho video
-        results = model(frame, task='detect', conf=0.25, verbose=False, stream=True)
+        # 2. CHẠY MODEL TRACKING
+        # conf=0.25 để tracker chạy ổn định
+        results = model.track(frame, persist=True, conf=0.25, verbose=False)
 
-        # 3. Lấy frame đã được vẽ
-        annotated_frame = frame # Mặc định là frame gốc
-        for r in results:
-            annotated_frame = r.plot(boxes=True, masks=False) # Chỉ vẽ box
+        # Lấy frame đã được vẽ (boxes, confs...)
+        annotated_frame = results[0].plot(boxes=True, masks=False, conf=True)
+
+        
+        # Tạo một set để lưu các ID của các vật thể có conf > 0.9 trong frame
+        current_high_conf_ids = set()
+
+        # Lấy confs (độ tự tin) và tracker_ids
+        confs = results[0].boxes.conf.cpu()
+        track_ids = []
+        if results[0].boxes.id is not None:
+            track_ids = results[0].boxes.id.int().cpu().tolist()
+
+        # Lặp qua từng đối tượng
+        for conf, track_id in zip(confs, track_ids):
+            
+            if conf > 0.8:
+                current_high_conf_ids.add(track_id) 
+
+        # counter
+        current_object_count = len(current_high_conf_ids)
+
+        # counter text
+        cv2.putText(annotated_frame, f"SO LUONG: {current_object_count}", (50, 70), 
+            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (80, 175, 76), 2)
 
         # 4. Mã hóa frame thành JPEG
-        # .imencode sẽ nén ảnh thành định dạng JPEG trong bộ nhớ
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
         if not ret:
             continue # Bỏ qua nếu nén lỗi
 
         # 5. "Phát" frame ra
-        # Chuyển buffer thành bytes và gửi đi theo chuẩn HTTP
         frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-# --- ĐỊNH NGHĨA CÁC ĐƯỜNG DẪN (ROUTES) ---
-
 @app.route('/')
 def index():
-   return render_template('index.html')
+   return render_template('index.html') # Đảm bảo file HTML ở thư mục /templates
 
 @app.route('/video_feed')
 def video_feed():
-    """
-    Đây là đường dẫn "nguồn" video.
-    Trình duyệt sẽ liên tục kết nối tới đây để lấy video.
-    Nó trả về một 'Response' kiểu 'multipart/x-mixed-replace',
-    cho phép server liên tục "thay thế" ảnh cũ bằng ảnh mới.
-    """
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # --- CHẠY SERVER ---
 if __name__ == '__main__':
-    # 'debug=True' để server tự khởi động lại khi bạn sửa code
-    # 'host='0.0.0.0'' để server có thể được truy cập từ máy khác trong mạng
     app.run(host='0.0.0.0', port=5000, debug=True)
