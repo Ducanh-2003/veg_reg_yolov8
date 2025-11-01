@@ -13,92 +13,132 @@ This project includes a pretrained `model.pt`, a simple Flask-based web UI (in `
 
 - Python 3.8+
 - See `requirements.txt` for required Python packages. Primary dependencies:
-  - `ultralytics` (YOLOv8)
-  - `opencv-python`
-  - `flask`
 
-Install dependencies with pip:
+  # veg_reg_yolov8
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # macOS / Linux (zsh)
-pip install -r requirements.txt
-```
+  An easy-to-run demo for vegetable detection using YOLOv8 and a small Flask web UI.
 
-## Quickstart — run the web UI
+  This repository contains:
 
-The repository contains a minimal Flask web app for running inference locally.
+  - `model.pt` — pretrained YOLOv8 weights (for demo/inference).
+  - `main.py` — minimal Flask app that serves a small web UI and exposes an upload API.
+  - `templates/`, `static/` — frontend HTML/CSS/JS for the UI.
+  - `data.yaml` — dataset configuration (class names, train/val paths).
 
-1. Ensure your virtualenv is active and dependencies installed.
-2. Start the app:
+  ## Features
 
-```bash
-python main.py
-```
+  - Live webcam stream with per-class counts (real-time tracking).
+  - Image upload API that returns annotated image and per-class counts.
+  - Simple, responsive UI with separate pages for Live and Upload.
 
-3. Open your browser to http://127.0.0.1:5000 and use the UI to upload images and view detections.
+  ## Requirements
 
-(If `main.py` offers CLI flags the app may accept `--host` / `--port` overrides.)
+  - Python 3.8+
+  - See `requirements.txt` for full dependency list. Key packages:
+    - `ultralytics` (YOLOv8)
+    - `opencv-python`
+    - `flask`
 
-## Quickstart — command-line inference (Ultralytics)
+  Install and activate a virtual environment, then install dependencies:
 
-If you prefer the Ultralytics CLI for quick inference, use:
+  ```bash
+  python -m venv .venv
+  source .venv/bin/activate  # macOS / Linux (zsh)
+  pip install -r requirements.txt
+  ```
 
-```bash
-# single image or folder
-yolo detect predict model=model.pt source=path/to/image_or_folder
-```
+  ## Run the app (local)
 
-This will run detection and write result images to `runs/detect/...` by default.
+  1. Make sure `model.pt` is present in the repository root. The Flask app expects it there.
+  2. Start the server:
 
-## Training
+  ```bash
+  python main.py
+  ```
 
-Train a new model with the Ultralytics `yolo` command. Example:
+  3. Open your browser:
 
-```bash
-yolo detect train data=data.yaml model=yolov8n.pt epochs=100 imgsz=640
-```
+  - Landing page: http://127.0.0.1:5000
+  - Live stream: http://127.0.0.1:5000/live
+  - Upload page: http://127.0.0.1:5000/upload
 
-- `data.yaml` should point to your train/val paths and class names (YOLO format).
-- For more advanced training, adjust hyperparameters or use a larger backbone (e.g., `yolov8s.pt`, `yolov8m.pt`).
+  Notes:
 
-## Dataset format
+  - The live page reads from the system default webcam (index 0). If your webcam is on a different index or in use, change the index in `main.py` (`cv2.VideoCapture(0)`).
+  - If you want to run on a different host/port, set environment variables or edit the call to `app.run()` in `main.py`.
 
-This project uses the standard YOLO text-label format:
+  ## API
 
-- Images: any supported image format (JPEG/PNG) under your dataset folders.
-- Labels: one `.txt` file per image with lines: `<class> <x_center> <y_center> <width> <height>` — normalized (0..1).
-- `data.yaml` example:
+  - `GET /` — landing page with links to Live and Upload pages.
+  - `GET /live` — page showing live stream and counts panel.
+  - `GET /upload` — web page that contains the upload form (for users).
+  - `POST /upload` — accepts multipart form `file` (image). Response JSON:
 
-```yaml
-train: /path/to/train/images
-val: /path/to/val/images
-nc: 3
-names: ['avocado', 'beans', 'beet', 'bell pepper', 'broccoli', 'brus capusta', 'cabbage', 'carrot', 'cayliflower', 'celery', 'corn', 'cucumber', 'eggplant', 'fasol', 'garlic', 'hot pepper', 'onion', 'peas', 'potato', 'pumpkin', 'rediska', 'redka', 'salad', 'squash-patisson', 'tomato', 'vegetable marrow']
-```
+  ```json
+  {
+    "counts": { "tomato": 2, "onion": 1 },
+    "image": "data:image/jpeg;base64,..."
+  }
+  ```
 
-## Included artifacts
+  - `GET /video_feed` — MJPEG stream for the live camera (used by `/live`).
+  - `GET /counts` — JSON with latest per-class counts from the live tracker.
 
-- `model.pt` — a pretrained weights file included for quick demos.
-- `main.py` — the minimal Flask server / inference entrypoint.
-- `data.yaml` — dataset configuration used for training/inference.
-- `templates/`, `static/` — simple web UI assets.
+  ## Data & labels
 
-## Troubleshooting
+  `data.yaml` contains class names and dataset paths in YOLO format. Example entry for the names used in this project:
 
-- If you see missing package errors, ensure your virtualenv is activated and `pip install -r requirements.txt` completed without errors.
-- If inference is slow on CPU, try smaller model sizes (e.g., `yolov8n.pt`) or run on GPU (install appropriate PyTorch + CUDA where available).
-- If the web UI doesn't start, check for port collisions or run `python main.py --port 8000` (if supported) or set the `FLASK_APP` env var as needed.
+  ```yaml
+  names:
+    [
+      "avocado",
+      "beans",
+      "beet",
+      "bell pepper",
+      "broccoli",
+      "brus capusta",
+      "cabbage",
+      "carrot",
+      "cayliflower",
+      "celery",
+      "corn",
+      "cucumber",
+      "eggplant",
+      "fasol",
+      "garlic",
+      "hot pepper",
+      "onion",
+      "peas",
+      "potato",
+      "pumpkin",
+      "rediska",
+      "redka",
+      "salad",
+      "squash-patisson",
+      "tomato",
+      "vegetable marrow",
+    ]
+  ```
 
-## Development notes
+  When training a new model, make sure `data.yaml` points to the correct `train` and `val` image folders and has the correct `nc` (number of classes).
 
-- To add a new class, update your dataset labels and `data.yaml`, then retrain a model.
-- Consider adding CI checks for linting or a smoke test that runs a single inference on a tiny sample image.
+  ## Troubleshooting
 
-## License
+  - Webcam not found: check that your webcam is free and the index in `cv2.VideoCapture(...)` is correct.
+  - Model file missing: ensure `model.pt` exists at the repo root.
+  - Slow inference on CPU: try a smaller model (e.g., `yolov8n.pt`) or run on a machine with GPU and install matching PyTorch/CUDA.
+  - Dependency issues: re-create the virtualenv and `pip install -r requirements.txt`.
 
-This project is provided as-is. Add a license file if you want an explicit license (e.g., MIT).
+  ## Development notes
 
-## Contact
+  - To change UI text or add localization, edit the templates in `templates/` and static assets in `static/`.
+  - Consider moving inline JavaScript into `static/` files for easier maintenance.
+  - Add a systemd/service file or Dockerfile if you plan to deploy.
 
-If you have questions or need help, open an issue in the repository or contact the maintainer.
+  ## License
+
+  Add a LICENSE file to this repository if you want an explicit license (e.g., MIT). The current repository is provided as-is for demo and development.
+
+  ## Contact
+
+  Open an issue in the repository if you need help, or contact the maintainer directly.
